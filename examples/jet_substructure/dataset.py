@@ -26,6 +26,8 @@ from torch.utils.data import Dataset
 # Creates a PyTorch Dataset from the h5 file input.
 # Returns labels as a one-hot encoded vector.
 # Input / output labels are contained in self.feature_labels / self.output_labels respectively
+
+
 class JetSubstructureDataset(Dataset):
     def __init__(self, input_file, config_file, split="train"):
         super().__init__()
@@ -36,26 +38,30 @@ class JetSubstructureDataset(Dataset):
             tree_array = h5py_file["t_allpar_new"][()]
 
         with open(config_file, 'r') as f:
-           self.config = yaml.load(f) 
+            self.config = yaml.safe_load(f)
 
         # TODO: Add warnings about unused dictionary entries
         self.feature_labels = self.config["Inputs"]
         self.output_labels = self.config["Labels"]
 
         # Filter input file and convert inputs / outputs to numpy array
-        dataset_df = pd.DataFrame(tree_array,columns=list(set(self.feature_labels+self.output_labels)))
+        dataset_df = pd.DataFrame(tree_array, columns=list(
+            set(self.feature_labels + self.output_labels)))
         dataset_df = dataset_df.drop_duplicates()
         features_df = dataset_df[self.feature_labels]
         outputs_df = dataset_df[self.output_labels]
         X = features_df.values
         y = outputs_df.values
         if "j_index" in self.feature_labels:
-            X = X[:,:-1] # drop the j_index feature
+            X = X[:, :-1]  # drop the j_index feature
         if "j_index" in self.output_labels:
             # drop the j_index label
-            y = y[:,:-1]
+            y = y[:, :-1]
             self.output_labels = self.output_labels[:-1]
-        X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.2, random_state=42) # Using the same dataset split as: https://github.com/hls-fpga-machine-learning/pytorch-training/blob/master/train/Data_loader.py
+        # Using the same dataset split as:
+        # https://github.com/hls-fpga-machine-learning/pytorch-training/blob/master/train/Data_loader.py
+        X_train_val, X_test, y_train_val, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42)
         if self.config["NormalizeInputs"]:
             scaler = preprocessing.StandardScaler().fit(X_train_val)
             # scaler = preprocessing.MinMaxScaler().fit(X_train_val)
@@ -68,10 +74,10 @@ class JetSubstructureDataset(Dataset):
                 dim = self.config["PcaDimensions"]
                 X_train_val_fp64 = torch.from_numpy(X_train_val).double()
                 X_test_fp64 = torch.from_numpy(X_test).double()
-                U,S,V = torch.svd(X_train_val_fp64)
-                X_train_val_pca_fp64 = torch.mm(X_train_val_fp64, V[:,0:dim])
-                X_test_pca_fp64 = torch.mm(X_test_fp64, V[:,0:dim])
-                variance_retained = 100*(S[0:dim].sum() / S.sum())
+                U, S, V = torch.svd(X_train_val_fp64)
+                X_train_val_pca_fp64 = torch.mm(X_train_val_fp64, V[:, 0:dim])
+                X_test_pca_fp64 = torch.mm(X_test_fp64, V[:, 0:dim])
+                variance_retained = 100 * (S[0:dim].sum() / S.sum())
                 print(f"Dimensions used for PCA: {dim}")
                 print(f"Variance retained (%): {variance_retained}")
                 X_train_val = X_train_val_pca_fp64.float().numpy()
@@ -89,4 +95,3 @@ class JetSubstructureDataset(Dataset):
 
     def __getitem__(self, idx):
         return (self.X[idx], self.y[idx])
-
